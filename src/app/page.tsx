@@ -14,10 +14,18 @@ export default function Home() {
   const [hasSearched, setHasSearched] = useState(false);
   const [crawledUrls, setCrawledUrls] = useState<string[]>([]);
   const [urlsCount, setUrlsCount] = useState(0);
+  const [showNotification, setShowNotification] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState('');
+
+  const showNotificationMessage = (message: string) => {
+    setNotificationMessage(message);
+    setShowNotification(true);
+    setTimeout(() => setShowNotification(false), 3000);
+  };
 
   const handleCrawl = async () => {
     if (!keyword.trim() || !domain.trim()) {
-      alert('Please enter both keyword and domain');
+      showNotificationMessage('Please enter both keyword and domain');
       return;
     }
 
@@ -70,6 +78,28 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-gray-100">
+      {/* Notification Toast */}
+      {showNotification && (
+        <div className="fixed top-4 right-4 z-50 animate-slide-in">
+          <div className="bg-red-500/90 backdrop-blur-lg border border-red-400/50 rounded-xl px-6 py-4 shadow-2xl flex items-center gap-3 min-w-[300px]">
+            <svg className="w-6 h-6 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div>
+              <p className="text-white font-semibold text-sm">{notificationMessage}</p>
+            </div>
+            <button 
+              onClick={() => setShowNotification(false)}
+              className="ml-auto text-white hover:text-red-200 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="border-b border-gray-700/50 backdrop-blur-sm bg-gray-900/50">
         <div className="max-w-7xl mx-auto px-6 py-4">
