@@ -13,11 +13,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get backend URL from environment variable
-    const backendUrl = process.env.BACKEND_API_URL || 'http://127.0.0.1:8000/api/v1/crawl';
+    // Get backend host from environment variable
+    const backendHost = process.env.BACKEND_API_HOST || 'http://127.0.0.1:8000';
 
     // Build URL with query parameters
-    const url = new URL(backendUrl);
+    const url = new URL(`${backendHost}/api/v1/crawl`);
     url.searchParams.append('keyword', keyword);
     url.searchParams.append('domain', domain);
 

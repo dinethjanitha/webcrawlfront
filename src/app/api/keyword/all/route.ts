@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
-    const backendUrl = process.env.BACKEND_API_URL?.replace('/crawl', '') || 'http://127.0.0.1:8000/api/v1';
-    const response = await fetch(`${backendUrl}/keyword/all`);
+    const backendHost = process.env.BACKEND_API_HOST || 'http://127.0.0.1:8000';
+    const response = await fetch(`${backendHost}/api/v1/keyword/all`);
     
     if (!response.ok) {
       return NextResponse.json(
