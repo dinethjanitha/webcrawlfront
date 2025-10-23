@@ -1,7 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
+
+interface HistoryItem {
+  _id: string;
+  keyword: string;
+  siteDomain: string;
+  urls: string[];
+}
 
 export default function Home() {
   const [keyword, setKeyword] = useState('');
@@ -16,6 +23,63 @@ export default function Home() {
   const [urlsCount, setUrlsCount] = useState(0);
   const [showNotification, setShowNotification] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState('');
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // Fetch history on component mount
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  const fetchHistory = async () => {
+    try {
+      const res = await fetch('/api/keyword/all');
+      if (res.ok) {
+        const data = await res.json();
+        setHistory(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch history:', error);
+    }
+  };
+
+  const loadHistoryItem = async (id: string, historyKeyword: string, historyDomain: string) => {
+    setCurrentKeyword(historyKeyword);
+    setCurrentDomain(historyDomain);
+    setHasSearched(true);
+    setIsLoading(true);
+    setLoadingHistory(true);
+    setResponse('');
+    setStreamedText('');
+    setCrawledUrls([]);
+    setUrlsCount(0);
+
+    try {
+      const res = await fetch(`/api/keyword/full?id=${encodeURIComponent(id)}`);
+      
+      if (!res.ok) {
+        throw new Error('Failed to fetch');
+      }
+
+      const data = await res.json();
+      const fullText = data.summary || 'No summary available';
+      setCrawledUrls(data.urls || []);
+      setUrlsCount(data.urls.length || 0);
+      
+      // Load immediately without streaming animation
+      setIsLoading(false);
+      setLoadingHistory(false);
+      setResponse(fullText);
+      setStreamedText(fullText);
+
+    } catch (error) {
+      setIsLoading(false);
+      setLoadingHistory(false);
+      setStreamedText('Error: Failed to fetch history data. Please try again.');
+      console.error('History load error:', error);
+    }
+  };
 
   const showNotificationMessage = (message: string) => {
     setNotificationMessage(message);
@@ -55,6 +119,9 @@ export default function Home() {
       const fullText = data.summary || 'No summary available';
       setCrawledUrls(data.urls || []);
       setUrlsCount(data.urls_crawled || 0);
+      
+      // Refresh history after successful crawl
+      fetchHistory();
       
       // Simulate streaming effect
       setIsLoading(false);
@@ -102,12 +169,73 @@ export default function Home() {
 
       {/* Header */}
       <div className="border-b border-gray-700/50 backdrop-blur-sm bg-gray-900/50">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
             Web Crawler
           </h1>
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-800/50 hover:bg-gray-700/50 border border-gray-700/50 rounded-xl transition-all"
+          >
+            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-gray-300 text-sm font-medium">
+              {showHistory ? 'Hide' : 'Show'} History
+            </span>
+          </button>
         </div>
       </div>
+
+      {/* History Sidebar */}
+      {showHistory && (
+        <div className="border-b border-gray-700/50 bg-gray-800/30 backdrop-blur-sm">
+          <div className="max-w-7xl mx-auto px-6 py-4">
+            <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-700/50">
+              <h2 className="text-lg font-semibold mb-4 text-gray-200 flex items-center gap-2">
+                <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+                Previous Searches
+              </h2>
+              {history.length === 0 ? (
+                <p className="text-gray-500 text-sm text-center py-8">No search history yet</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 max-h-[400px] overflow-y-auto pr-2">
+                  {history.map((item) => (
+                    <button
+                      key={item._id}
+                      onClick={() => loadHistoryItem(item._id, item.keyword, item.siteDomain)}
+                      disabled={loadingHistory}
+                      className="bg-gray-800/50 hover:bg-gray-700/50 border border-gray-700/50 hover:border-blue-500/50 rounded-lg p-4 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-blue-400 font-medium truncate group-hover:text-blue-300 transition-colors">
+                            {item.keyword}
+                          </p>
+                          <p className="text-purple-400 text-sm truncate">
+                            .{item.siteDomain}
+                          </p>
+                        </div>
+                        <svg className="w-4 h-4 text-gray-500 group-hover:text-blue-400 transition-colors flex-shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                        </svg>
+                        <span>{item.urls.length} URLs</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Input Section */}
