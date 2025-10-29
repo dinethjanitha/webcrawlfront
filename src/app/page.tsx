@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 
 interface HistoryItem {
@@ -11,10 +12,9 @@ interface HistoryItem {
 }
 
 export default function Home() {
-  const [keyword, setKeyword] = useState('');
-  const [domain, setDomain] = useState('');
-  const [currentKeyword, setCurrentKeyword] = useState('');
-  const [currentDomain, setCurrentDomain] = useState('');
+  const router = useRouter();
+  const [websiteUrl, setWebsiteUrl] = useState('');
+  const [currentWebsiteUrl, setCurrentWebsiteUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [response, setResponse] = useState('');
   const [streamedText, setStreamedText] = useState('');
@@ -26,6 +26,9 @@ export default function Home() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [urlError, setUrlError] = useState('');
+  
+  const DEFAULT_DOMAIN = 'com'; // Default domain for API calls
 
   // Fetch history on component mount
   useEffect(() => {
@@ -44,41 +47,9 @@ export default function Home() {
     }
   };
 
-  const loadHistoryItem = async (id: string, historyKeyword: string, historyDomain: string) => {
-    setCurrentKeyword(historyKeyword);
-    setCurrentDomain(historyDomain);
-    setHasSearched(true);
-    setIsLoading(true);
-    setLoadingHistory(true);
-    setResponse('');
-    setStreamedText('');
-    setCrawledUrls([]);
-    setUrlsCount(0);
-
-    try {
-      const res = await fetch(`/api/keyword/full?id=${encodeURIComponent(id)}`);
-      
-      if (!res.ok) {
-        throw new Error('Failed to fetch');
-      }
-
-      const data = await res.json();
-      const fullText = data.summary || 'No summary available';
-      setCrawledUrls(data.urls || []);
-      setUrlsCount(data.urls.length || 0);
-      
-      // Load immediately without streaming animation
-      setIsLoading(false);
-      setLoadingHistory(false);
-      setResponse(fullText);
-      setStreamedText(fullText);
-
-    } catch (error) {
-      setIsLoading(false);
-      setLoadingHistory(false);
-      setStreamedText('Error: Failed to fetch history data. Please try again.');
-      console.error('History load error:', error);
-    }
+  const loadHistoryItem = async (id: string) => {
+    // Redirect to chat page with the keyword ID
+    router.push(`/chat?id=${encodeURIComponent(id)}`);
   };
 
   const showNotificationMessage = (message: string) => {
@@ -87,14 +58,52 @@ export default function Home() {
     setTimeout(() => setShowNotification(false), 3000);
   };
 
+  const validateUrl = (url: string): boolean => {
+    // Reset error
+    setUrlError('');
+
+    // Check if empty
+    if (!url.trim()) {
+      setUrlError('Please enter a website URL');
+      return false;
+    }
+
+    // Add protocol if missing for validation
+    let urlToValidate = url.trim();
+    if (!urlToValidate.startsWith('http://') && !urlToValidate.startsWith('https://')) {
+      urlToValidate = 'https://' + urlToValidate;
+    }
+
+    // Validate URL format
+    try {
+      const urlObj = new URL(urlToValidate);
+      
+      // Check if it has a valid hostname
+      if (!urlObj.hostname || urlObj.hostname.length < 3) {
+        setUrlError('Please enter a valid website URL');
+        return false;
+      }
+
+      // Check if hostname has at least one dot (e.g., example.com)
+      if (!urlObj.hostname.includes('.')) {
+        setUrlError('Please enter a valid domain (e.g., example.com)');
+        return false;
+      }
+
+      return true;
+    } catch {
+      setUrlError('Please enter a valid URL (e.g., example.com or https://example.com)');
+      return false;
+    }
+  };
+
   const handleCrawl = async () => {
-    if (!keyword.trim() || !domain.trim()) {
-      showNotificationMessage('Please enter both keyword and domain');
+    if (!validateUrl(websiteUrl)) {
+      showNotificationMessage(urlError);
       return;
     }
 
-    setCurrentKeyword(keyword);
-    setCurrentDomain(domain);
+    setCurrentWebsiteUrl(websiteUrl);
     setHasSearched(true);
     setIsLoading(true);
     setResponse('');
@@ -103,8 +112,8 @@ export default function Home() {
     setUrlsCount(0);
 
     try {
-      // Call API with query parameters
-      const res = await fetch(`/api/crawl?keyword=${encodeURIComponent(keyword)}&domain=${encodeURIComponent(domain)}`, {
+      // Call API with query parameters - using websiteUrl as keyword and default domain
+      const res = await fetch(`/api/crawl?keyword=${encodeURIComponent(websiteUrl)}&domain=${encodeURIComponent(DEFAULT_DOMAIN)}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -116,25 +125,17 @@ export default function Home() {
       }
 
       const data = await res.json();
-      const fullText = data.summary || 'No summary available';
-      setCrawledUrls(data.urls || []);
-      setUrlsCount(data.urls_crawled || 0);
       
       // Refresh history after successful crawl
-      fetchHistory();
+      await fetchHistory();
       
-      // Simulate streaming effect
+      // Redirect to chat page with the keyword_id
       setIsLoading(false);
-      let index = 0;
-      const streamInterval = setInterval(() => {
-        if (index < fullText.length) {
-          setStreamedText(fullText.substring(0, index + 1));
-          index++;
-        } else {
-          clearInterval(streamInterval);
-          setResponse(fullText);
-        }
-      }, 5); // Faster streaming - 5ms per character
+      if (data.keyword_id) {
+        router.push(`/chat?id=${encodeURIComponent(data.keyword_id)}`);
+      } else {
+        setStreamedText('Crawl completed but no keyword ID returned.');
+      }
 
     } catch (error) {
       setIsLoading(false);
@@ -205,7 +206,7 @@ export default function Home() {
                   {history.map((item) => (
                     <button
                       key={item._id}
-                      onClick={() => loadHistoryItem(item._id, item.keyword, item.siteDomain)}
+                      onClick={() => loadHistoryItem(item._id)}
                       disabled={loadingHistory}
                       className="bg-gray-800/50 hover:bg-gray-700/50 border border-gray-700/50 hover:border-blue-500/50 rounded-lg p-4 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
                     >
@@ -241,29 +242,31 @@ export default function Home() {
         {/* Input Section */}
         <div className="max-w-4xl mx-auto mb-8">
           <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700/50 rounded-2xl p-8 shadow-2xl">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-300">Keyword</label>
-                <input
-                  type="text"
-                  value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
-                  placeholder="Enter keyword..."
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100 placeholder-gray-500 transition-all"
-                  onKeyPress={(e) => e.key === 'Enter' && handleCrawl()}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-300">Domain</label>
-                <input
-                  type="text"
-                  value={domain}
-                  onChange={(e) => setDomain(e.target.value)}
-                  placeholder="e.g., com, lk, org..."
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100 placeholder-gray-500 transition-all"
-                  onKeyPress={(e) => e.key === 'Enter' && handleCrawl()}
-                />
-              </div>
+            <div className="space-y-2 mb-6">
+              <label className="block text-sm font-medium text-gray-300">Website URL</label>
+              <input
+                type="text"
+                value={websiteUrl}
+                onChange={(e) => {
+                  setWebsiteUrl(e.target.value);
+                  setUrlError('');
+                }}
+                placeholder="Enter website URL (e.g., example.com or https://example.com)"
+                className={`w-full px-4 py-3 bg-gray-900/50 border ${
+                  urlError ? 'border-red-500' : 'border-gray-600/50'
+                } rounded-xl focus:outline-none focus:ring-2 ${
+                  urlError ? 'focus:ring-red-500' : 'focus:ring-blue-500'
+                } focus:border-transparent text-gray-100 placeholder-gray-500 transition-all`}
+                onKeyPress={(e) => e.key === 'Enter' && handleCrawl()}
+              />
+              {urlError && (
+                <p className="text-red-400 text-sm mt-1 flex items-center gap-1">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {urlError}
+                </p>
+              )}
             </div>
             <button
               onClick={handleCrawl}
@@ -294,12 +297,8 @@ export default function Home() {
                 <h2 className="text-lg font-semibold mb-4 text-gray-200">Current Search</h2>
                 <div className="space-y-4">
                   <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-700/30">
-                    <p className="text-xs text-gray-400 mb-1">Keyword</p>
-                    <p className="text-blue-400 font-medium text-lg">{currentKeyword}</p>
-                  </div>
-                  <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-700/30">
-                    <p className="text-xs text-gray-400 mb-1">Domain</p>
-                    <p className="text-purple-400 font-medium text-lg">{currentDomain}</p>
+                    <p className="text-xs text-gray-400 mb-1">Website URL</p>
+                    <p className="text-blue-400 font-medium break-all">{currentWebsiteUrl}</p>
                   </div>
                   <div className="bg-gray-900/50 rounded-xl p-4 border border-gray-700/30">
                     <p className="text-xs text-gray-400 mb-1">Status</p>
