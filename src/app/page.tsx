@@ -13,7 +13,7 @@ interface HistoryItem {
 
 export default function Home() {
   const router = useRouter();
-  const [websiteUrl, setWebsiteUrl] = useState('');
+  const [keyword, setKeyword] = useState('');
   const [currentWebsiteUrl, setCurrentWebsiteUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [response, setResponse] = useState('');
@@ -28,7 +28,10 @@ export default function Home() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [urlError, setUrlError] = useState('');
   
-  const DEFAULT_DOMAIN = 'com'; // Default domain for API calls
+  // Multiple URLs categorized
+  const [servicesUrls, setServicesUrls] = useState<string[]>(['']);
+  const [contactsUrls, setContactsUrls] = useState<string[]>(['']);
+  const [packagesUrls, setPackagesUrls] = useState<string[]>(['']);
 
   // Fetch history on component mount
   useEffect(() => {
@@ -48,8 +51,13 @@ export default function Home() {
   };
 
   const loadHistoryItem = async (id: string) => {
+    // Show loading state
+    setLoadingHistory(true);
+    
     // Redirect to chat page with the keyword ID
     router.push(`/chat?id=${encodeURIComponent(id)}`);
+    
+    // Note: loading state will reset when user navigates away
   };
 
   const showNotificationMessage = (message: string) => {
@@ -58,13 +66,48 @@ export default function Home() {
     setTimeout(() => setShowNotification(false), 3000);
   };
 
-  const validateUrl = (url: string): boolean => {
-    // Reset error
-    setUrlError('');
+  // Helper functions for URL management
+  const addUrlField = (category: 'services' | 'contacts' | 'packages') => {
+    if (category === 'services') {
+      setServicesUrls([...servicesUrls, '']);
+    } else if (category === 'contacts') {
+      setContactsUrls([...contactsUrls, '']);
+    } else {
+      setPackagesUrls([...packagesUrls, '']);
+    }
+  };
 
-    // Check if empty
+  const removeUrlField = (category: 'services' | 'contacts' | 'packages', index: number) => {
+    if (category === 'services') {
+      const newUrls = servicesUrls.filter((_, i) => i !== index);
+      setServicesUrls(newUrls.length > 0 ? newUrls : ['']);
+    } else if (category === 'contacts') {
+      const newUrls = contactsUrls.filter((_, i) => i !== index);
+      setContactsUrls(newUrls.length > 0 ? newUrls : ['']);
+    } else {
+      const newUrls = packagesUrls.filter((_, i) => i !== index);
+      setPackagesUrls(newUrls.length > 0 ? newUrls : ['']);
+    }
+  };
+
+  const updateUrl = (category: 'services' | 'contacts' | 'packages', index: number, value: string) => {
+    if (category === 'services') {
+      const newUrls = [...servicesUrls];
+      newUrls[index] = value;
+      setServicesUrls(newUrls);
+    } else if (category === 'contacts') {
+      const newUrls = [...contactsUrls];
+      newUrls[index] = value;
+      setContactsUrls(newUrls);
+    } else {
+      const newUrls = [...packagesUrls];
+      newUrls[index] = value;
+      setPackagesUrls(newUrls);
+    }
+  };
+
+  const validateUrl = (url: string): boolean => {
     if (!url.trim()) {
-      setUrlError('Please enter a website URL');
       return false;
     }
 
@@ -80,30 +123,66 @@ export default function Home() {
       
       // Check if it has a valid hostname
       if (!urlObj.hostname || urlObj.hostname.length < 3) {
-        setUrlError('Please enter a valid website URL');
         return false;
       }
 
       // Check if hostname has at least one dot (e.g., example.com)
       if (!urlObj.hostname.includes('.')) {
-        setUrlError('Please enter a valid domain (e.g., example.com)');
         return false;
       }
 
       return true;
     } catch {
-      setUrlError('Please enter a valid URL (e.g., example.com or https://example.com)');
       return false;
     }
   };
 
+  const getAllUrls = (): string[] => {
+    const allUrls = [
+      ...servicesUrls.filter(url => url.trim() !== ''),
+      ...contactsUrls.filter(url => url.trim() !== ''),
+      ...packagesUrls.filter(url => url.trim() !== '')
+    ];
+    
+    // Ensure URLs have protocol
+    return allUrls.map(url => {
+      const trimmedUrl = url.trim();
+      if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+        return 'https://' + trimmedUrl;
+      }
+      return trimmedUrl;
+    });
+  };
+
   const handleCrawl = async () => {
-    if (!validateUrl(websiteUrl)) {
-      showNotificationMessage(urlError);
+    // Reset error
+    setUrlError('');
+
+    // Keyword is always required
+    if (!keyword.trim()) {
+      setUrlError('Keyword is required');
+      showNotificationMessage('Keyword is required');
       return;
     }
 
-    setCurrentWebsiteUrl(websiteUrl);
+    // Get all URLs from all categories
+    const allUrls = getAllUrls();
+
+    // Validate all URLs if provided
+    if (allUrls.length > 0) {
+      const invalidUrls = allUrls.filter(url => !validateUrl(url));
+      if (invalidUrls.length > 0) {
+        setUrlError('Some URLs are invalid. Please check and try again.');
+        showNotificationMessage('Some URLs are invalid. Please check and try again.');
+        return;
+      }
+      setCurrentWebsiteUrl(allUrls[0]);
+    } else {
+      setCurrentWebsiteUrl(keyword.trim());
+    }
+
+    const crawlKeyword = keyword.trim();
+
     setHasSearched(true);
     setIsLoading(true);
     setResponse('');
@@ -112,12 +191,13 @@ export default function Home() {
     setUrlsCount(0);
 
     try {
-      // Call API with query parameters - using websiteUrl as keyword and default domain
-      const res = await fetch(`/api/crawl?keyword=${encodeURIComponent(websiteUrl)}&domain=${encodeURIComponent(DEFAULT_DOMAIN)}`, {
-        method: 'GET',
+      // Call API with POST method and url_list in body
+      const res = await fetch(`/api/crawl?keyword=${encodeURIComponent(crawlKeyword)}`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify(allUrls),
       });
 
       if (!res.ok) {
@@ -208,16 +288,22 @@ export default function Home() {
                       key={item._id}
                       onClick={() => loadHistoryItem(item._id)}
                       disabled={loadingHistory}
-                      className="bg-gray-800/50 hover:bg-gray-700/50 border border-gray-700/50 hover:border-blue-500/50 rounded-lg p-4 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                      className="bg-gray-800/50 hover:bg-gray-700/50 border border-gray-700/50 hover:border-blue-500/50 rounded-lg p-4 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed group relative"
                     >
+                      {loadingHistory && (
+                        <div className="absolute inset-0 bg-gray-900/80 backdrop-blur-sm rounded-lg flex items-center justify-center z-10">
+                          <div className="flex flex-col items-center gap-2">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                            <span className="text-xs text-gray-400">Loading...</span>
+                          </div>
+                        </div>
+                      )}
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex-1 min-w-0">
                           <p className="text-blue-400 font-medium truncate group-hover:text-blue-300 transition-colors">
                             {item.keyword}
                           </p>
-                          <p className="text-purple-400 text-sm truncate">
-                            .{item.siteDomain}
-                          </p>
+                          {/* domain removed from display */}
                         </div>
                         <svg className="w-4 h-4 text-gray-500 group-hover:text-blue-400 transition-colors flex-shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -240,34 +326,149 @@ export default function Home() {
 
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Input Section */}
-        <div className="max-w-4xl mx-auto mb-8">
+        <div className="max-w-6xl mx-auto mb-8">
           <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700/50 rounded-2xl p-8 shadow-2xl">
-            <div className="space-y-2 mb-6">
-              <label className="block text-sm font-medium text-gray-300">Website URL</label>
+            <h2 className="text-xl font-semibold mb-6 text-gray-200">Crawl Configuration</h2>
+            
+            {/* Keyword Input */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Keyword / Domain <span className="text-red-400">*</span>
+              </label>
               <input
                 type="text"
-                value={websiteUrl}
+                value={keyword}
                 onChange={(e) => {
-                  setWebsiteUrl(e.target.value);
+                  setKeyword(e.target.value);
                   setUrlError('');
                 }}
-                placeholder="Enter website URL (e.g., example.com or https://example.com)"
-                className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                  urlError ? 'border-red-500' : 'border-gray-600/50'
-                } rounded-xl focus:outline-none focus:ring-2 ${
-                  urlError ? 'focus:ring-red-500' : 'focus:ring-blue-500'
-                } focus:border-transparent text-gray-100 placeholder-gray-500 transition-all`}
-                onKeyPress={(e) => e.key === 'Enter' && handleCrawl()}
+                placeholder="e.g., example.com or domain name"
+                className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600/50 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100 placeholder-gray-500 transition-all"
               />
-              {urlError && (
-                <p className="text-red-400 text-sm mt-1 flex items-center gap-1">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  {urlError}
-                </p>
-              )}
+              <p className="text-xs text-gray-500 mt-1">
+                Required for all crawls. If URLs are provided below, they will be crawled; otherwise, the keyword will be used.
+              </p>
             </div>
+
+            <div className="border-t border-gray-700/50 pt-6 mb-6">
+              <h3 className="text-lg font-medium text-gray-300 mb-4">
+                Specific URLs <span className="text-gray-500 text-sm">(Optional - if provided, these will be crawled instead)</span>
+              </h3>
+            
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Services URLs */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-blue-400">Services URLs</label>
+                    <button
+                      onClick={() => addUrlField('services')}
+                      className="text-xs px-2 py-1 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/50 rounded-lg text-blue-400 transition-all"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                  {servicesUrls.map((url, index) => (
+                    <div key={index} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={url}
+                        onChange={(e) => updateUrl('services', index, e.target.value)}
+                        placeholder="https://example.com/services"
+                        className="flex-1 px-3 py-2 bg-gray-900/50 border border-gray-600/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-100 placeholder-gray-500 text-sm transition-all"
+                      />
+                      {servicesUrls.length > 1 && (
+                        <button
+                          onClick={() => removeUrlField('services', index)}
+                          className="px-2 text-red-400 hover:text-red-300 transition-colors"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Contacts URLs */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-green-400">Contacts URLs</label>
+                    <button
+                      onClick={() => addUrlField('contacts')}
+                      className="text-xs px-2 py-1 bg-green-600/20 hover:bg-green-600/30 border border-green-500/50 rounded-lg text-green-400 transition-all"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                  {contactsUrls.map((url, index) => (
+                    <div key={index} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={url}
+                        onChange={(e) => updateUrl('contacts', index, e.target.value)}
+                        placeholder="https://example.com/contact"
+                        className="flex-1 px-3 py-2 bg-gray-900/50 border border-gray-600/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-100 placeholder-gray-500 text-sm transition-all"
+                      />
+                      {contactsUrls.length > 1 && (
+                        <button
+                          onClick={() => removeUrlField('contacts', index)}
+                          className="px-2 text-red-400 hover:text-red-300 transition-colors"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Packages URLs */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-purple-400">Packages URLs</label>
+                    <button
+                      onClick={() => addUrlField('packages')}
+                      className="text-xs px-2 py-1 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/50 rounded-lg text-purple-400 transition-all"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                  {packagesUrls.map((url, index) => (
+                    <div key={index} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={url}
+                        onChange={(e) => updateUrl('packages', index, e.target.value)}
+                        placeholder="https://example.com/packages"
+                        className="flex-1 px-3 py-2 bg-gray-900/50 border border-gray-600/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-100 placeholder-gray-500 text-sm transition-all"
+                      />
+                      {packagesUrls.length > 1 && (
+                        <button
+                          onClick={() => removeUrlField('packages', index)}
+                          className="px-2 text-red-400 hover:text-red-300 transition-colors"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {urlError && (
+              <p className="text-red-400 text-sm mb-4 flex items-center gap-1">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {urlError}
+              </p>
+            )}
+
             <button
               onClick={handleCrawl}
               disabled={isLoading}
@@ -444,3 +645,6 @@ export default function Home() {
     </div>
   );
 }
+
+
+//test
