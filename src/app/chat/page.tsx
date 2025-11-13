@@ -28,10 +28,12 @@ function ChatPageContent() {
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Load messages from localStorage
   const loadMessagesFromStorage = (id: string) => {
+    setLoadingMessages(true);
     try {
       const stored = localStorage.getItem(`chat_${id}`);
       if (stored) {
@@ -45,6 +47,8 @@ function ChatPageContent() {
       }
     } catch (error) {
       console.error('Error loading messages from localStorage:', error);
+    } finally {
+      setLoadingMessages(false);
     }
   };
 
@@ -209,7 +213,7 @@ function ChatPageContent() {
                 Chat Discussion
               </h1>
               <p className="text-sm text-gray-400">
-                {crawlData?.keyword || 'Loading...'} <span className="text-purple-400">.{crawlData?.siteDomain || ''}</span>
+                {crawlData?.keyword || 'Loading...'}
               </p>
             </div>
           </div>
@@ -254,7 +258,14 @@ function ChatPageContent() {
             <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700/50 rounded-2xl shadow-xl flex flex-col h-[calc(100vh-10rem)]">
               {/* Chat Messages */}
               <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                {messages.length === 0 ? (
+                {loadingMessages ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center">
+                      <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+                      <p className="text-gray-400">Loading previous chat messages...</p>
+                    </div>
+                  </div>
+                ) : messages.length === 0 ? (
                   <div className="flex items-center justify-center h-full">
                     <div className="text-center">
                       <svg className="w-16 h-16 text-gray-600 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -1,17 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const keyword = searchParams.get('keyword');
-    const domain = searchParams.get('domain');
 
-    if (!keyword || !domain) {
+    if (!keyword) {
       return NextResponse.json(
-        { error: 'Keyword and domain are required' },
+        { error: 'Keyword is required' },
         { status: 400 }
       );
     }
+
+    // Get the URL list from the request body
+    const urlList = await request.json();
+
+    // if (!Array.isArray(urlList) || urlList.length === 0) {
+    //   return NextResponse.json(
+    //     { error: 'URL list must be a non-empty array' },
+    //     { status: 400 }
+    //   );
+    // }
 
     // Get backend host from environment variable
     const backendHost = process.env.BACKEND_API_HOST || 'http://127.0.0.1:8000';
@@ -19,13 +28,13 @@ export async function GET(request: NextRequest) {
     // Build URL with query parameters
     const url = new URL(`${backendHost}/api/v1/crawl`);
     url.searchParams.append('keyword', keyword);
-    url.searchParams.append('domain', domain);
 
     const response = await fetch(url.toString(), {
-      method: 'GET',
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify(urlList),
     });
 
     if (!response.ok) {
